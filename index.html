@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinity Riddle - Leaderboard Realtime Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        .btn-answer {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .btn-answer:hover:not(:disabled) {
+            transform: scale(1.02) translateX(5px);
+            background-color: #334155;
+            border-color: #3b82f6;
+        }
+
+        .shake {
+            animation: shake 0.5s infinite;
+        }
+
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(5px); }
+            50% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+            100% { transform: translateX(0); }
+        }
+
+        .timer-bar {
+            transition: width 0.1s linear, background-color 0.5s ease;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+
+        .power-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+        }
+
+        .review-item {
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 12px;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-left: 4px solid #ccc;
+        }
+        .review-correct { border-left-color: #10b981; }
+        .review-wrong { border-left-color: #ef4444; }
+
+        #instant-feedback {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 5rem;
+            font-weight: 900;
+            z-index: 100;
+            pointer-events: none;
+            opacity: 0;
+            transition: all 0.5s;
+        }
+        .show-feedback {
+            animation: popFeedback 0.8s ease-out forwards;
+        }
+        @keyframes popFeedback {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+            100% { opacity: 0; transform: translate(-50%, -70%) scale(1); }
+        }
+
+        .live-tag {
+            animation: pulse-red 2s infinite;
+        }
+        @keyframes pulse-red {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <!-- Efek Teks Instan (HORE / LEDEK) -->
+    <div id="instant-feedback"></div>
+
+    <div id="game-container" class="w-full max-w-lg glass-panel rounded-3xl p-6 md:p-8 relative overflow-hidden">
+        
+        <!-- ================= HALAMAN AUTH ================= -->
+        <div id="view-auth" class="space-y-8 py-10">
+            <div class="text-center">
+                <h1 class="text-5xl font-bold italic text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400 mb-2">QUICK RIDDLE</h1>
+                <p class="text-slate-400 tracking-[0.2em] text-sm font-semibold uppercase">Poin Tertinggi Mendominasi Leaderboard!</p>
+            </div>
+            
+            <div class="space-y-4">
+                <div class="relative">
+                    <input type="text" id="input-username" placeholder="Masukkan Nama Anda..." 
+                        class="w-full bg-slate-900/50 border border-slate-700 rounded-xl py-4 px-5 text-xl outline-none focus:border-blue-500 transition-all text-center">
+                </div>
+                <button onclick="handleLogin()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl text-xl shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-3">
+                    MULAI MISI <i class="fas fa-bolt"></i>
+                </button>
+            </div>
+
+            <div class="pt-6 border-t border-slate-800">
+                <div class="flex justify-center items-center gap-2 mb-4">
+                    <span class="w-2 h-2 bg-red-500 rounded-full live-tag"></span>
+                    <p class="text-xs text-center text-slate-500 uppercase tracking-widest font-bold">Live Leaderboard</p>
+                </div>
+                <div id="mini-leaderboard" class="space-y-2 max-h-48 overflow-y-auto pr-2">
+                    <div class="text-center text-slate-600 animate-pulse">Menghubungkan ke Supabase...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= HALAMAN LOADING ================= -->
+        <div id="view-loading" class="hidden flex-col items-center justify-center py-20">
+            <div class="w-16 h-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-6"></div>
+            <p class="text-blue-400 animate-pulse font-bold tracking-widest uppercase text-center text-sm">Menyiapkan Arena Pertarungan Poin...</p>
+        </div>
+
+        <!-- ================= HALAMAN GAMEPLAY ================= -->
+        <div id="view-game" class="hidden space-y-6">
+            <div class="flex justify-between items-center text-sm font-bold bg-slate-900/40 p-3 rounded-2xl border border-white/5">
+                <div class="flex flex-col">
+                    <span class="text-slate-500 text-[10px] uppercase">User</span>
+                    <span id="display-user" class="text-blue-400 truncate max-w-[80px]">---</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="text-slate-500 text-[10px] uppercase">Soal</span>
+                    <span id="display-progress" class="text-white">1/30</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="text-slate-500 text-[10px] uppercase">Skor</span>
+                    <span id="display-score" class="text-yellow-400">0</span>
+                </div>
+                <div class="flex flex-col items-end">
+                    <span class="text-slate-500 text-[10px] uppercase">Koin</span>
+                    <span id="display-coins" class="text-emerald-400"><i class="fas fa-coins text-yellow-500"></i> 10</span>
+                </div>
+            </div>
+
+            <div id="timer-container" class="relative w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-white/5">
+                <div id="timer-fill" class="timer-bar h-full bg-gradient-to-r from-blue-500 to-cyan-400 w-full"></div>
+            </div>
+
+            <div class="min-h-[140px] flex flex-col items-center justify-center text-center p-4">
+                <span id="display-difficulty" class="text-[10px] bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full mb-3 font-bold tracking-widest uppercase">---</span>
+                <h2 id="question-text" class="text-xl md:text-2xl font-bold leading-tight fade-in">---</h2>
+            </div>
+
+            <div id="options-grid" class="grid grid-cols-1 gap-3"></div>
+
+            <!-- Panel Kekuatan -->
+            <div class="border-t border-slate-800 pt-4">
+                <p class="text-[9px] text-center text-slate-500 uppercase tracking-widest mb-2 font-bold">Strategi & Sabotase</p>
+                <div class="power-grid">
+                    <button id="btn-power-5050" onclick="usePowerUp('5050')" class="bg-slate-800/50 border border-purple-500/30 p-2 rounded-xl hover:bg-purple-900/20 transition-all disabled:opacity-20">
+                        <i class="fas fa-cut text-purple-400 text-xs"></i>
+                        <p class="text-[8px] font-bold text-slate-400 uppercase">50/50</p>
+                        <p class="text-[9px] text-purple-300">10c</p>
+                    </button>
+                    <button id="btn-power-freeze" onclick="usePowerUp('freeze')" class="bg-slate-800/50 border border-cyan-500/30 p-2 rounded-xl hover:bg-cyan-900/20 transition-all disabled:opacity-20">
+                        <i class="fas fa-snowflake text-cyan-400 text-xs"></i>
+                        <p class="text-[8px] font-bold text-slate-400 uppercase">Beku 5s</p>
+                        <p class="text-[9px] text-cyan-300">8c</p>
+                    </button>
+                    <button id="btn-power-skip" onclick="usePowerUp('skip')" class="bg-slate-800/50 border border-amber-500/30 p-2 rounded-xl hover:bg-amber-900/20 transition-all disabled:opacity-20">
+                        <i class="fas fa-forward text-amber-400 text-xs"></i>
+                        <p class="text-[8px] font-bold text-slate-400 uppercase">Skip</p>
+                        <p class="text-[9px] text-amber-300">20c</p>
+                    </button>
+                    <button id="btn-power-plus5" onclick="usePowerUp('plus5')" class="bg-slate-800/50 border border-emerald-500/30 p-2 rounded-xl hover:bg-emerald-900/20 transition-all disabled:opacity-20">
+                        <i class="fas fa-plus text-emerald-400 text-xs"></i>
+                        <p class="text-[8px] font-bold text-slate-400 uppercase">+5 Poin</p>
+                        <p class="text-[9px] text-emerald-300">5c</p>
+                    </button>
+                    <button id="btn-power-sabotage" onclick="usePowerUp('sabotage')" class="bg-slate-800/50 border border-red-500/30 p-2 rounded-xl hover:bg-red-900/20 transition-all disabled:opacity-20">
+                        <i class="fas fa-skull text-red-400 text-xs"></i>
+                        <p class="text-[8px] font-bold text-slate-400 uppercase">Sabotase</p>
+                        <p class="text-[9px] text-red-300">30c</p>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= HALAMAN RESULT ================= -->
+        <div id="view-result" class="hidden text-center space-y-6 py-4 animate-fadeIn">
+            <h2 id="result-title" class="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-600">MISSION COMPLETE</h2>
+            
+            <div class="bg-slate-900/50 rounded-3xl p-6 border border-white/5 space-y-2">
+                <p class="text-slate-500 uppercase text-xs tracking-widest font-bold">SKOR AKHIR ANDA</p>
+                <div id="final-score" class="text-6xl font-bold text-white leading-none">0</div>
+                <div id="rank-badge" class="inline-block mt-4 px-4 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm font-bold border border-blue-500/30">---</div>
+            </div>
+
+            <!-- Review Jawaban -->
+            <div class="space-y-3">
+                <p class="text-slate-500 uppercase text-[10px] tracking-[0.3em] font-bold">Review Hasil Belajar</p>
+                <div id="review-container" class="space-y-2 max-h-40 overflow-y-auto pr-2 text-left text-xs">
+                    <!-- List review diisi via JS -->
+                </div>
+            </div>
+
+            <div class="space-y-3">
+                <p class="text-slate-500 uppercase text-[10px] tracking-[0.3em] font-bold">Global Leaderboard (Live)</p>
+                <div id="final-leaderboard" class="space-y-2 max-h-32 overflow-y-auto pr-2"></div>
+            </div>
+
+            <button onclick="location.reload()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all">
+                MAIN LAGI <i class="fas fa-redo ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const synth = window.speechSynthesis;
+
+        function sayText(text, isMock = false) {
+            if (synth.speaking) synth.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'id-ID';
+            utterance.pitch = isMock ? 1.5 : 1.0; 
+            utterance.rate = 1.2;
+            synth.speak(utterance);
+        }
+
+        function playSound(type) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            if (type === 'correct') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+                sayText("Hore!");
+                showInstantFeedback("HORE", "#10b981");
+            } else if (type === 'wrong') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+                sayText("Wuuuu, ledek!", true);
+                showInstantFeedback("LEDEK", "#ef4444");
+            } else if (type === 'click') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+            } else if (type === 'sabotage') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(50, audioCtx.currentTime + 0.5);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+            }
+        }
+
+        function showInstantFeedback(text, color) {
+            const el = document.getElementById('instant-feedback');
+            el.innerText = text;
+            el.style.color = color;
+            el.classList.remove('show-feedback');
+            void el.offsetWidth; 
+            el.classList.add('show-feedback');
+        }
+    </script>
+
+    <script>
+        // --- SUPABASE CONFIG (PASTIKAN TABEL 'leaderboard' ADA) ---
+        const SUPABASE_URL = "https://aywjijrkvwkexzwpssqu.supabase.co"; 
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5d2ppanJrdndrZXh6d3Bzc3F1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3MzM3MjcsImV4cCI6MjA4OTMwOTcyN30.EGlo7vMmAUmTltNViHbg24IxhHRKvPgpv40bCEJppls"; 
+        let supabaseClient = null;
+
+        if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+
+        // --- DATABASE SOAL CAMPURAN (LDII & UMUM) ---
+        const questionBank = {
+            easy: [
+                { q: "Apa nama fondasi Tri Sukses yang berarti menguasai ilmu agama?", a: "Alim & Faqih", o: ["Mandiri", "Alim & Faqih", "Mujhid Muzhid", "Rukun"] },
+                { q: "Mampu berdiri sendiri secara ekonomi, spiritual, dan sosial disebut?", a: "Mandiri", o: ["Alim", "Kompak", "Mandiri", "Amanah"] },
+                { q: "Perilaku mulia dalam ucapan dan perbuatan dalam Tri Sukses adalah?", a: "Akhlaqul Kharimah", o: ["Akhlaqul Kharimah", "Mandiri", "Kurup", "Jujur"] },
+                { q: "Tobi'at Luhur yang berarti mewujudkan kedamaian adalah?", a: "Rukun", o: ["Kompak", "Rukun", "Amanah", "Muzhid"] },
+                { q: "Berkata dan bersikap sesuai kenyataan merupakan nilai?", a: "Jujur", o: ["Jujur", "Amanah", "Rukun", "Kurup"] },
+                { q: "Apa warna bendera negara Indonesia?", a: "Merah Putih", o: ["Merah Kuning", "Putih Merah", "Merah Putih", "Merah Hijau"] },
+                { q: "Hewan mamalia terbesar di dunia saat ini adalah?", a: "Paus Biru", o: ["Gajah", "Paus Biru", "Hiu Megalodon", "Jerapah"] },
+                { q: "Ibukota dari negara Jepang adalah?", a: "Tokyo", o: ["Seoul", "Beijing", "Tokyo", "Bangkok"] },
+                { q: "Planet terdekat dari Matahari dalam tata surya kita adalah?", a: "Merkurius", o: ["Venus", "Bumi", "Merkurius", "Mars"] },
+                { q: "Siapakah pencipta lagu kebangsaan Indonesia Raya?", a: "W.R. Supratman", o: ["Ismail Marzuki", "W.R. Supratman", "Kusbini", "Ibu Sud"] }
+            ],
+            medium: [
+                { q: "Menjunjung tinggi perintah Allah dan Rasul dalam Tali Keimanan disebut?", a: "Mengagungkan", o: ["Mempersungguh", "Mengagungkan", "Bersyukur", "Berdoa"] },
+                { q: "Prinsip kerja yang berarti tepat waktu dan tepat sasaran adalah?", a: "Kurup", o: ["Benar", "Kurup", "Janji", "Kompak"] },
+                { q: "Bersungguh-sungguh dalam ibadah dan amal merupakan Tali Keimanan?", a: "Mempersungguh", o: ["Bersyukur", "Mempersungguh", "Berdoa", "Kurup"] },
+                { q: "Sikap Maqodirulloh yang tepat saat mendapat nikmat adalah?", a: "Bersyukur", o: ["Bersyukur", "Sabar", "Istirja'", "Taubat"] },
+                { q: "Dalam prinsip kerja, 'Benar' berarti sesuai dengan?", a: "Aturan & Syariat", o: ["Kemauan sendiri", "Aturan & Syariat", "Keuntungan", "Waktu"] },
+                { q: "Apa nama mata uang yang digunakan di negara Inggris?", a: "Poundsterling", o: ["Euro", "Dollar", "Poundsterling", "Yen"] },
+                { q: "Siapakah ilmuwan yang menemukan lampu pijar?", a: "Thomas Alva Edison", o: ["Nikola Tesla", "Albert Einstein", "Thomas Alva Edison", "Isaac Newton"] },
+                { q: "Benua terkecil di dunia berdasarkan luas daratannya adalah?", a: "Australia", o: ["Eropa", "Australia", "Antartika", "Afrika"] },
+                { q: "Apa nama gunung tertinggi di dunia yang berada di Pegunungan Himalaya?", a: "Everest", o: ["K2", "Semeru", "Everest", "Fuji"] },
+                { q: "Unsur kimia dengan simbol 'O' dalam tabel periodik adalah?", a: "Oksigen", o: ["Emas", "Oksigen", "Perak", "Besi"] }
+            ],
+            hard: [
+                { q: "Dalam 4 Roda Berputar, apa tugas 'Yang Ingat' terhadap 'Yang Lupa'?", a: "Mengingatkan", o: ["Menghukum", "Mengingatkan", "Meninggalkan", "Mencatat"] },
+                { q: "Syarat Kerukunan ke-3 adalah Sabar, yang berarti sanggup?", a: "Ngalah", o: ["Melawan", "Ngalah", "Membela diri", "Menang"] },
+                { q: "Apa yang harus dilakukan 'Yang Bisa' dalam prinsip 4 Roda Berputar?", a: "Membantu yang tidak bisa", o: ["Pamer kemampuan", "Membantu yang tidak bisa", "Bekerja sendiri", "Diam saja"] },
+                { q: "Saling memperhatikan dan menjaga perasaan adalah Syarat Kerukunan poin ke?", a: "5", o: ["3", "4", "5", "2"] },
+                { q: "Dalam 4 Roda Berputar, yang salah dinasehati agar mau?", a: "Bertaubat", o: ["Berhenti", "Bertaubat", "Minta maaf saja", "Keluar"] },
+                { q: "Apa nama danau terdalam di dunia yang terletak di Siberia?", a: "Danau Baikal", o: ["Danau Toba", "Danau Baikal", "Danau Victoria", "Danau Caspian"] },
+                { q: "Siapakah seniman yang melukis mahakarya 'Monalisa'?", a: "Leonardo da Vinci", o: ["Pablo Picasso", "Vincent van Gogh", "Leonardo da Vinci", "Michelangelo"] },
+                { q: "Negara manakah yang memiliki jumlah penduduk terbanyak di dunia saat ini?", a: "India", o: ["China", "India", "Amerika Serikat", "Indonesia"] },
+                { q: "Berapa jumlah total tulang pada tubuh manusia dewasa secara rata-rata?", a: "206", o: ["150", "206", "300", "215"] },
+                { q: "Pada tahun berapakah Perang Dunia Kedua secara resmi berakhir?", a: "1945", o: ["1918", "1945", "1950", "1939"] }
+            ]
+        };
+
+        // --- GAME STATE ---
+        let state = {
+            username: "",
+            currentIdx: 0,
+            score: 0,
+            coins: 10,
+            questions: [],
+            history: [], 
+            timer: null,
+            timeLeft: 0,
+            startTime: 0,
+            isFrozen: false
+        };
+
+        window.onload = () => fetchLeaderboard('mini-leaderboard');
+
+        async function handleLogin() {
+            const user = document.getElementById('input-username').value.trim();
+            if (!user) return;
+            
+            playSound('click');
+            state.username = user;
+            document.getElementById('view-auth').classList.add('hidden');
+            document.getElementById('view-loading').classList.remove('hidden');
+
+            const sEasy = [...questionBank.easy].sort(() => Math.random() - 0.5);
+            const sMed = [...questionBank.medium].sort(() => Math.random() - 0.5);
+            const sHard = [...questionBank.hard].sort(() => Math.random() - 0.5);
+            state.questions = [...sEasy, ...sMed, ...sHard];
+
+            setTimeout(() => {
+                document.getElementById('view-loading').classList.add('hidden');
+                document.getElementById('view-game').classList.remove('hidden');
+                startLevel();
+            }, 1000);
+        }
+
+        function startLevel() {
+            if (state.currentIdx >= 30) {
+                return finishGame();
+            }
+
+            if (state.currentIdx > 0 && state.currentIdx % 10 === 0) {
+                state.coins += 50;
+                showNotification("LEVEL SELESAI! +50 KOIN");
+            }
+
+            const q = state.questions[state.currentIdx];
+            const levelNum = Math.floor(state.currentIdx / 10) + 1;
+            
+            // WAKTU 8-10 DETIK
+            state.timeLeft = levelNum === 1 ? 10 : (levelNum === 2 ? 9 : 8);
+            state.isFrozen = false;
+            state.startTime = Date.now();
+
+            updateUI();
+            renderQuestion(q, levelNum);
+            runTimer();
+        }
+
+        function renderQuestion(q, level) {
+            const container = document.getElementById('options-grid');
+            const qText = document.getElementById('question-text');
+            const diffTag = document.getElementById('display-difficulty');
+            
+            qText.innerText = q.q;
+            diffTag.innerText = level === 1 ? "TAHAP 1: MUDAH (10s)" : (level === 2 ? "TAHAP 2: SEDANG (9s)" : "TAHAP 3: SULIT (8s)");
+            diffTag.className = `text-[10px] px-3 py-1 rounded-full mb-3 font-bold tracking-widest ${level === 1 ? 'bg-blue-500/20 text-blue-400' : (level === 2 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400')}`;
+
+            container.innerHTML = '';
+            const shuffledOptions = [...q.o].sort(() => Math.random() - 0.5);
+            
+            shuffledOptions.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "btn-answer w-full p-4 rounded-xl text-left font-bold text-lg flex items-center border border-white/5 bg-slate-800/50";
+                btn.innerHTML = `<span class="w-8 h-8 rounded-lg bg-slate-700/50 flex items-center justify-center mr-4 text-blue-400 text-sm font-bold">${String.fromCharCode(65 + idx)}</span> <span>${opt}</span>`;
+                btn.onclick = () => checkAnswer(opt, btn, q.a);
+                container.appendChild(btn);
+            });
+        }
+
+        function runTimer() {
+            clearInterval(state.timer);
+            const fill = document.getElementById('timer-fill');
+            const container = document.getElementById('timer-container');
+            const totalTime = state.timeLeft;
+
+            state.timer = setInterval(() => {
+                if (!state.isFrozen) {
+                    state.timeLeft -= 0.1;
+                    const pct = (state.timeLeft / totalTime) * 100;
+                    fill.style.width = Math.max(0, pct) + "%";
+
+                    if (state.timeLeft <= 3) {
+                        fill.style.backgroundColor = "#ef4444";
+                        container.classList.add('shake');
+                    } else {
+                        fill.style.backgroundColor = "";
+                        container.classList.remove('shake');
+                    }
+
+                    if (state.timeLeft <= 0) {
+                        clearInterval(state.timer);
+                        handleTimeout();
+                    }
+                }
+            }, 100);
+        }
+
+        function checkAnswer(choice, btn, correctAnswer) {
+            clearInterval(state.timer);
+            const q = state.questions[state.currentIdx];
+            const allBtns = document.querySelectorAll('.btn-answer');
+            const level = Math.floor(state.currentIdx / 10) + 1;
+            const isCorrect = (choice === correctAnswer);
+
+            allBtns.forEach(b => b.disabled = true);
+
+            state.history.push({
+                q: q.q,
+                user: choice,
+                correct: correctAnswer,
+                isCorrect: isCorrect
+            });
+
+            if (isCorrect) {
+                playSound('correct');
+                btn.classList.add('bg-emerald-500/80', 'border-emerald-400');
+                let points = 10 * level;
+                if ((Date.now() - state.startTime) < 2000) points += 5;
+                state.score += points;
+                state.coins += 5;
+            } else {
+                playSound('wrong');
+                btn.classList.add('bg-red-500/80', 'border-red-400');
+                allBtns.forEach(b => {
+                    if (b.innerText.includes(correctAnswer)) b.classList.add('bg-emerald-500/50', 'border-emerald-400');
+                });
+            }
+            
+            setTimeout(next, 1200);
+        }
+
+        function handleTimeout() {
+            const q = state.questions[state.currentIdx];
+            playSound('wrong');
+            state.history.push({
+                q: q.q,
+                user: "Waktu Habis",
+                correct: q.a,
+                isCorrect: false
+            });
+            const allBtns = document.querySelectorAll('.btn-answer');
+            allBtns.forEach(b => {
+                b.disabled = true;
+                if (b.innerText.includes(q.a)) b.classList.add('bg-emerald-500/50');
+            });
+            setTimeout(next, 1200);
+        }
+
+        function next() {
+            state.currentIdx++;
+            startLevel();
+        }
+
+        async function usePowerUp(type) {
+            if (type === '5050' && state.coins >= 10) {
+                playSound('click');
+                state.coins -= 10;
+                const q = state.questions[state.currentIdx];
+                const allBtns = Array.from(document.querySelectorAll('.btn-answer'));
+                allBtns.filter(b => !b.innerText.includes(q.a)).sort(() => Math.random() - 0.5).slice(0, 2).forEach(btn => {
+                    btn.style.opacity = "0.2";
+                    btn.disabled = true;
+                });
+            } else if (type === 'freeze' && state.coins >= 8) {
+                playSound('click');
+                state.coins -= 8;
+                state.isFrozen = true;
+                showNotification("WAKTU BEKU (5 DETIK)");
+                setTimeout(() => state.isFrozen = false, 5000);
+            } else if (type === 'skip' && state.coins >= 20) {
+                playSound('click');
+                state.coins -= 20;
+                state.history.push({
+                    q: state.questions[state.currentIdx].q,
+                    user: "Diskip",
+                    correct: state.questions[state.currentIdx].a,
+                    isCorrect: true 
+                });
+                state.score += (10 * (Math.floor(state.currentIdx / 10) + 1));
+                next();
+            } else if (type === 'plus5' && state.coins >= 5) {
+                playSound('click');
+                state.coins -= 5;
+                state.score += 5;
+                showNotification("+5 POIN DITAMBAHKAN!");
+            } else if (type === 'sabotage' && state.coins >= 30) {
+                if (!supabaseClient) return showNotification("SABOTASE GAGAL (DB ERROR)");
+                playSound('sabotage');
+                state.coins -= 30;
+                try {
+                    const { data } = await supabaseClient.from('leaderboard').select('*').order('score', {descending:true}).limit(1);
+                    if (data && data[0]) {
+                        const target = data[0];
+                        if (target.username === state.username) {
+                            showNotification("ANDA ADALAH PERINGKAT 1!");
+                            state.coins += 30;
+                            return;
+                        }
+                        const newScore = Math.max(0, target.score - 50);
+                        await supabaseClient.from('leaderboard').update({ score: newScore }).eq('id', target.id);
+                        showNotification(`SABOTASE BERHASIL! ${target.username} -50 POIN`);
+                    }
+                } catch (e) { console.error(e); }
+            }
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('display-user').innerText = state.username;
+            document.getElementById('display-progress').innerText = `${Math.min(30, state.currentIdx + 1)}/30`;
+            document.getElementById('display-score').innerText = state.score;
+            document.getElementById('display-coins').innerHTML = `<i class="fas fa-coins text-yellow-500"></i> ${state.coins}`;
+            
+            document.getElementById('btn-power-5050').disabled = state.coins < 10;
+            document.getElementById('btn-power-freeze').disabled = state.coins < 8;
+            document.getElementById('btn-power-skip').disabled = state.coins < 20;
+            document.getElementById('btn-power-plus5').disabled = state.coins < 5;
+            document.getElementById('btn-power-sabotage').disabled = state.coins < 30;
+        }
+
+        function showNotification(msg) {
+            const t = document.createElement('div');
+            t.className = "fixed top-20 left-1/2 -translate-x-1/2 bg-yellow-500 text-black px-6 py-2 rounded-full font-bold z-50 animate-bounce text-sm";
+            t.innerText = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 2500);
+        }
+
+        function renderReview() {
+            const container = document.getElementById('review-container');
+            container.innerHTML = '';
+            state.history.forEach((item, idx) => {
+                const div = document.createElement('div');
+                div.className = `review-item ${item.isCorrect ? 'review-correct' : 'review-wrong'}`;
+                div.innerHTML = `
+                    <p class="font-bold">#${idx+1} ${item.q}</p>
+                    <p>Jawaban Anda: <span class="${item.isCorrect ? 'text-emerald-400' : 'text-red-400'}">${item.user}</span></p>
+                    ${!item.isCorrect ? `<p class="text-slate-400 italic">Harusnya: ${item.correct}</p>` : ''}
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        async function finishGame() {
+            clearInterval(state.timer);
+            document.getElementById('view-game').classList.add('hidden');
+            document.getElementById('view-loading').classList.remove('hidden');
+            
+            renderReview();
+            await updateSupabaseScore();
+            
+            document.getElementById('view-loading').classList.add('hidden');
+            document.getElementById('view-result').classList.remove('hidden');
+            document.getElementById('final-score').innerText = state.score;
+            
+            document.getElementById('result-title').innerText = "MISI SELESAI!";
+            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+            
+            // Fetch Global Leaderboard untuk menentukan siapa yang tertinggi
+            await fetchLeaderboard('final-leaderboard');
+        }
+
+        async function updateSupabaseScore() {
+            if (!supabaseClient) return;
+            try {
+                await supabaseClient.from('leaderboard').insert([{ 
+                    username: state.username, 
+                    score: state.score, 
+                    level_reached: 30 
+                }]);
+            } catch (err) { console.error(err); }
+        }
+
+        async function fetchLeaderboard(targetId) {
+            const container = document.getElementById(targetId);
+            if (!supabaseClient) {
+                container.innerHTML = '<p class="text-[10px] text-slate-600 text-center">Leaderboard Offline</p>';
+                return;
+            }
+            try {
+                const { data, error } = await supabaseClient
+                    .from('leaderboard')
+                    .select('*')
+                    .order('score', { ascending: false })
+                    .limit(10);
+
+                if (error) throw error;
+                if (data) {
+                    container.innerHTML = '';
+                    data.forEach((row, idx) => {
+                        const isUser = row.username === state.username;
+                        const item = document.createElement('div');
+                        item.className = `flex justify-between items-center p-3 rounded-xl border border-white/5 ${isUser ? 'bg-blue-600/30 border-blue-500' : 'bg-slate-900/30'}`;
+                        item.innerHTML = `
+                            <div class="flex items-center gap-3">
+                                <span class="w-5 h-5 flex items-center justify-center rounded bg-slate-800 text-[10px] font-bold ${idx === 0 ? 'text-yellow-500' : 'text-slate-500'}">${idx + 1}</span>
+                                <span class="font-bold ${isUser ? 'text-white' : 'text-slate-300'}">${row.username}</span>
+                                ${idx === 0 ? '<i class="fas fa-crown text-yellow-500 text-[10px]"></i>' : ''}
+                            </div>
+                            <span class="text-yellow-400 font-bold">${row.score} pts</span>
+                        `;
+                        container.appendChild(item);
+
+                        // Update Rank Badge untuk User Sekarang di halaman hasil
+                        if (isUser && targetId === 'final-leaderboard') {
+                            const badge = document.getElementById('rank-badge');
+                            badge.innerText = `PERINGKAT ANDA: #${idx + 1}`;
+                            if (idx === 0) {
+                                badge.classList.add('bg-yellow-500/20', 'text-yellow-400', 'border-yellow-500/30');
+                                badge.innerText = "👑 PERINGKAT #1 GLOBAL!";
+                                confetti({ particleCount: 100, spread: 50, origin: { y: 0.8 } });
+                            }
+                        }
+                    });
+                }
+            } catch (err) { container.innerHTML = '<p class="text-red-500 text-xs text-center">Gagal memuat data peringkat.</p>'; }
+        }
+    </script>
+</body>
+</html>
